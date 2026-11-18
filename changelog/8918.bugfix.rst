@@ -1,0 +1,2 @@
+Fixed a crash when constructing the WCS of a `~sunpy.map.GenericMap` that uses a SIP projection and was loaded from a FITS file.
+SunPy-only metadata such as ``KEYCOMMENTS``, and COMMENT/HISTORY values that are not valid FITS cards, are no longer passed to `~astropy.wcs.WCS`, while the Map's public ``.meta`` is left unchanged.

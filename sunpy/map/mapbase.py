@@ -659,8 +659,11 @@ class GenericMap(MapMetaMixin, NDData):
         w2.array_shape = self.data.shape
 
         # Unlike Astropy we only use SIP distortions if it is in the CTYPE.
+        # Pass a FITS Header rather than ``self.meta`` so SunPy-only keys
+        # (e.g. KEYCOMMENTS) and values that are not valid FITS cards are not
+        # given to `astropy.wcs.WCS`. This does not mutate ``self.meta``.
         if any(t.endswith("-SIP") for t in self.coordinate_system):
-            sip_wcs = astropy.wcs.WCS(header=self.meta)
+            sip_wcs = astropy.wcs.WCS(header=self.fits_header)
             w2.sip = sip_wcs.sip
 
         # Validate the WCS here.

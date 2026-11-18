@@ -153,6 +153,103 @@ def test_wcs_sip(aia171_test_map):
     np.testing.assert_allclose(reprojected_map.wcs.sip.b, sip_wcs.sip.b)
 
 
+def _sip_fits_header():
+    """Minimal SIP FITS header used by the KEYCOMMENTS regression tests."""
+    return fits.Header({
+        'A_ORDER': 3,
+        'B_ORDER': 3,
+        'A_0_2': 1e-07,
+        'A_0_3': 1e-13,
+        'A_1_1': -1e-07,
+        'A_1_2': -1e-09,
+        'A_2_0': 1e-07,
+        'A_2_1': 1e-13,
+        'A_3_0': -1e-09,
+        'B_0_2': -1e-07,
+        'B_0_3': -1e-09,
+        'B_1_1': 1e-07,
+        'B_1_2': 1e-13,
+        'B_2_0': -1e-07,
+        'B_2_1': -1e-09,
+        'B_3_0': 1e-13,
+        'CTYPE1': 'HPLN-TAN-SIP',
+        'CTYPE2': 'HPLT-TAN-SIP',
+        'CUNIT1': 'deg',
+        'CUNIT2': 'deg',
+        'CRVAL1': 0.0,
+        'CRVAL2': 0.0,
+        'CRPIX1': 5.0,
+        'CRPIX2': 5.0,
+        'CDELT1': 1.0,
+        'CDELT2': 1.0,
+        'DATE-OBS': '2026-11-17T00:00:00',
+        'MJD-OBS': 61361.0,
+        'HGLN_OBS': 0.0,
+        'HGLT_OBS': 0.0,
+        'DSUN_OBS': 1.5e11,
+    })
+
+
+def test_wcs_sip_from_fits_keycomments(tmp_path):
+    """SIP Maps loaded from FITS must build a WCS despite KEYCOMMENTS in meta.
+
+    The FITS reader stores per-keyword comments in a KEYCOMMENTS dict, which is
+    not a valid FITS card value. Constructing or printing the Map must succeed
+    without removing KEYCOMMENTS from the public metadata.
+    """
+    data = np.ones((10, 10), dtype=np.int16)
+    file_path = tmp_path / "sip_keycomments.fits"
+    fits.PrimaryHDU(data=data, header=_sip_fits_header()).writeto(file_path)
+
+    sip_map = sunpy.map.Map(file_path)
+    assert 'KEYCOMMENTS' in sip_map.meta
+    assert isinstance(sip_map.meta['KEYCOMMENTS'], dict)
+
+    # Printing accesses .wcs via the coordinate-frame name.
+    text = str(sip_map)
+    assert 'SunPy Map' in text
+
+    # Public metadata is unchanged after WCS construction.
+    assert 'KEYCOMMENTS' in sip_map.meta
+    assert 'SIMPLE' in sip_map.meta['KEYCOMMENTS']
+
+    sip_wcs = sip_map.wcs
+    assert sip_wcs.sip is not None
+    assert sip_wcs.sip.a_order == 3
+    assert sip_wcs.sip.b_order == 3
+    np.testing.assert_allclose(sip_wcs.sip.a[0, 2], 1e-07)
+    np.testing.assert_allclose(sip_wcs.sip.a[3, 0], -1e-09)
+    np.testing.assert_allclose(sip_wcs.sip.b[0, 2], -1e-07)
+    np.testing.assert_allclose(sip_wcs.sip.b[2, 1], -1e-09)
+
+
+def test_wcs_sip_non_ascii_comment_history(tmp_path):
+    """Invalid COMMENT/HISTORY values must not crash SIP WCS construction.
+
+    Valid FITS comments stay in Map.meta. Only values that cannot be represented
+    as FITS cards are omitted from the WCS constructor input.
+    """
+    data = np.ones((10, 10), dtype=np.int16)
+    header = _sip_fits_header()
+    header['COMMENT'] = 'valid SIP comment'
+    header['HISTORY'] = 'valid SIP history'
+    file_path = tmp_path / "sip_comment.fits"
+    fits.PrimaryHDU(data=data, header=header).writeto(file_path)
+
+    sip_map = sunpy.map.Map(file_path)
+    sip_map.meta['comment'] = 'valid SIP comment\nprocessed\bdata'
+    sip_map.meta['history'] = 'valid SIP history'
+
+    with pytest.warns(SunpyMetadataWarning, match='not valid ascii'):
+        text = str(sip_map)
+    assert 'SunPy Map' in text
+    assert sip_map.wcs.sip is not None
+    # Map.meta retains the original comment/history, including the invalid line.
+    assert 'processed\bdata' in sip_map.meta['comment']
+    assert 'valid SIP history' in sip_map.meta['history']
+    assert 'KEYCOMMENTS' in sip_map.meta
+
+
 def test_wcs_cache(aia171_test_map):
     aia171_test_map = deepcopy(aia171_test_map)  # for thread safety
 
